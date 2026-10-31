@@ -27,12 +27,43 @@ jobs:
         with:
           node-version: 22
 
+      # Der verschlüsselte Anmeldezustand für die Live-Werte liegt im Zweig "state".
+      - name: Gespeicherten Anmeldezustand holen
+        run: |
+          mkdir -p state
+          if git fetch -q --depth=1 origin state 2>/dev/null; then
+            git show FETCH_HEAD:tokenstate.enc.json > state/tokenstate.enc.json || rm -f state/tokenstate.enc.json
+          fi
+          if [ -f state/tokenstate.enc.json ]; then sha256sum state/tokenstate.enc.json | cut -d' ' -f1 > state/.before; fi
+
       - name: Werte aus dem Westnetz-Portal holen und verschlüsseln
         env:
           MEDACO_USER: ${{ secrets.MEDACO_USER }}
           MEDACO_PASSWORD: ${{ secrets.MEDACO_PASSWORD }}
           DATA_KEY: ${{ secrets.DATA_KEY }}
+          TOKEN_KEY: ${{ secrets.TOKEN_KEY }}
+          SONNEN_SEED: ${{ secrets.SONNEN_SEED }}
         run: node scripts/update.js
+
+      # Auch sichern, wenn der Abruf danach scheitert: sonnen tauscht den Erneuerungsschlüssel bei jeder Erneuerung aus.
+      - name: Anmeldezustand sichern
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          f=state/tokenstate.enc.json
+          [ -f "$f" ] || exit 0
+          after=$(sha256sum "$f" | cut -d' ' -f1)
+          before=$(cat state/.before 2>/dev/null || true)
+          [ "$after" != "$before" ] || exit 0
+          d=$(mktemp -d); cp "$f" "$d/"; cd "$d"
+          git init -q -b state
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tokenstate.enc.json
+          git commit -q -m "Zustand"
+          git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" state
+          echo "Anmeldezustand gesichert"
 
       - uses: actions/configure-pages@v5
 

@@ -261,6 +261,43 @@ function nowIndex() {
   return view === 'day' ? h : view === 'month' ? +t.slice(8, 10) - 1 : +t.slice(5, 7) - 1;
 }
 
+/* ---------- Kopf: Live-Werte von sonnen, sonst letzte Viertelstunde vom Zähler ---------- */
+let liveAttrs = null, liveAt = 0;
+const liveActive = () => liveAttrs && Date.now() - liveAt < 20e3;
+function renderHero() {
+  if (!D) return;
+  const live = $('#live');
+  if (liveActive()) {
+    const a = liveAttrs, feed = a.grid_feedin || 0, buy = a.grid_purchase || 0;
+    live.classList.add('on');
+    live.classList.toggle('sell', feed > 0);
+    $('#stateText').textContent = feed > 0 ? 'Du verkaufst gerade Strom' : buy > 0 ? `Gerade kein Verkauf · Netzbezug ${nf0.format(buy)} W` : 'Gerade kein Verkauf';
+    $('#watt').textContent = nf0.format(feed);
+    $('#chips').innerHTML = `<span>☀️ Erzeugung<b class="num">${nf0.format(a.production_power || 0)} W</b></span><span>🏠 Verbrauch<b class="num">${nf0.format(a.consumption_power || 0)} W</b></span><span>🔋 Batterie<b class="num">${nf0.format(a.battery_usoc || 0)} %</b></span>`;
+    return;
+  }
+  const fresh = Date.now() - Date.parse(D.asOf) < 2 * 3600e3;
+  live.classList.toggle('on', fresh);
+  const w = D.last15.kwh * 4000;
+  live.classList.toggle('sell', fresh && w > 0);
+  $('#stateText').textContent = `Zuletzt verkauft, im Schnitt bis ${fmtTime(D.last15.end)} Uhr`;
+  $('#watt').textContent = nf0.format(w);
+  const ct = rateAt(todayKey());
+  $('#chips').innerHTML = `<span>Stand<b class="num">${fmtTime(D.asOf)} Uhr</b></span><span>Vergütung<b class="num">${ct === null ? '–' : nfCt.format(ct) + ' ct'}</b></span><span>Zählung ab<b class="num">${D.startDate ? dm(D.startDate) : '–'}</b></span>`;
+}
+// Der Zugriffsschlüssel kommt verschlüsselt mit den Zahlen und gilt 2 Stunden. Die Seite fragt sonnen direkt ab.
+async function pollLive() {
+  const s = D && D.sonnen;
+  if (!s || !s.accessToken || s.expiresAt - Date.now() < 30e3) { liveAttrs = null; return renderHero(); }
+  try {
+    const r = await fetch(`https://my-api.sonnen.de/v1/sites/${encodeURIComponent(s.siteId)}/live-state`, { headers: { Authorization: 'Bearer ' + s.accessToken }, cache: 'no-store' });
+    if (r.status === 401) { liveAttrs = null; load(false); return renderHero(); }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    liveAttrs = (await r.json()).data.attributes; liveAt = Date.now();
+  } catch (_) { liveAttrs = null; }
+  renderHero();
+}
+
 /* ---------- Anzeige ---------- */
 function render() {
   if (!D) return;
@@ -269,22 +306,16 @@ function render() {
   set(0, series('day', t).total); set(1, series('month', t.slice(0, 7)).total); set(2, series('year', t.slice(0, 4)).total);
   $('#yearTileLabel').textContent = D.startDate ? 'Seit ' + dm(D.startDate) : 'Jahr';
 
-  const fresh = Date.now() - Date.parse(D.asOf) < 2 * 3600e3;
-  const live = $('#live');
-  live.classList.toggle('on', fresh);
-  const w = D.last15.kwh * 4000;
-  live.classList.toggle('sell', fresh && w > 0);
-  $('#stateText').textContent = `Zuletzt verkauft, im Schnitt bis ${fmtTime(D.last15.end)} Uhr`;
-  $('#watt').textContent = nf0.format(w);
-  const ct = rateAt(t);
-  $('#chips').innerHTML = `<span>Stand<b class="num">${fmtTime(D.asOf)} Uhr</b></span><span>Vergütung<b class="num">${ct === null ? '–' : nfCt.format(ct) + ' ct'}</b></span><span>Zählung ab<b class="num">${D.startDate ? dm(D.startDate) : '–'}</b></span>`;
+  renderHero();
 
+  const fresh = Date.now() - Date.parse(D.asOf) < 2 * 3600e3;
   const stale = Date.now() - Date.parse(D.generatedAt) > 3 * 3600e3 || !fresh;
   const foot = $('#foot');
   foot.classList.toggle('warn', stale);
   foot.textContent = `Zählerwerte aus dem Westnetz-Portal, Stand ${fmtDayTime(D.asOf)} Uhr` + (stale ? ' · nicht aktuell, der Abruf läuft gerade nicht' : '');
   $('#setInfo').textContent = `Daten zuletzt geladen: ${fmtDayTime(D.generatedAt)} Uhr`;
   drawChart();
+  pollLive();
 }
 function drawChart() {
   if (!D) return;
@@ -339,9 +370,9 @@ $('#csvBtn').onclick = async () => {
 };
 
 // Daten alle 5 Minuten neu laden, solange die Seite sichtbar ist.
-let timer = null;
-const start = () => { stop(); load(true); timer = setInterval(() => load(false), 5 * 60e3); };
-const stop = () => { clearInterval(timer); timer = null; };
+let timer = null, liveTimer = null;
+const start = () => { stop(); load(true); timer = setInterval(() => load(false), 5 * 60e3); liveTimer = setInterval(pollLive, 5000); };
+const stop = () => { clearInterval(timer); clearInterval(liveTimer); timer = liveTimer = null; };
 document.addEventListener('visibilitychange', () => document.hidden ? stop() : start());
 start();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
