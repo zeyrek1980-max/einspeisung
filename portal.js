@@ -70,17 +70,23 @@ function berlinOffset(ymd) {
 const stamp = ymd => `${ymd}T00:00:00${berlinOffset(ymd)}`;
 const ymdOf = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-// Liefert die Viertelstundenwerte der Einspeisung ab `from` (YYYY-MM-DD) bis heute.
-async function fetchExportIntervals({ user, password, from }) {
+// Liefert die Viertelstundenwerte der gewünschten Linien (z. B. ['2.29.0', '1.29.0']) ab `from` (YYYY-MM-DD) bis heute.
+// 2.29.0 = Einspeisung ins Netz, 1.29.0 = Bezug aus dem Netz. Ergebnis: { '2.29.0': { timestamps, values, unit }, ... }
+async function fetchIntervals({ user, password, from, obis }) {
   const jar = await login(user, password);
   const tree = await getJson(jar, '/sidebarMultiMp/rlm');
-  const line = findLine(tree, /2\.29\.0/);
-  const mp = line && line.details && line.details.metPointId;
-  if (!line || !mp) throw new Error('Die Linie 1-1:2.29.0 (Einspeisung) wurde im Portal nicht gefunden');
   const to = ymdOf(new Date(Date.now() + 86400000));
-  const j = await getJson(jar, `/data/mpline/genericto/${mp}/${line.id}/${stamp(from)}/${stamp(to)}/base`);
-  if (!Array.isArray(j.timestamps) || !Array.isArray(j.values)) throw new Error('Unerwartete Datenantwort des Portals');
-  return { timestamps: j.timestamps, values: j.values, unit: j.unit };
+  const out = {};
+  for (const code of obis) {
+    const line = findLine(tree, new RegExp('1-1:' + code.replace(/\./g, '\\.')));
+    const mp = line && line.details && line.details.metPointId;
+    if (!line || !mp) throw new Error(`Die Linie 1-1:${code} wurde im Portal nicht gefunden`);
+    const j = await getJson(jar, `/data/mpline/genericto/${mp}/${line.id}/${stamp(from)}/${stamp(to)}/base`);
+    if (!Array.isArray(j.timestamps) || !Array.isArray(j.values)) throw new Error('Unerwartete Datenantwort des Portals');
+    out[code] = { timestamps: j.timestamps, values: j.values, unit: j.unit };
+  }
+  return out;
 }
+const fetchExportIntervals = async opts => (await fetchIntervals({ ...opts, obis: ['2.29.0'] }))['2.29.0'];
 
-module.exports = { fetchExportIntervals };
+module.exports = { fetchIntervals, fetchExportIntervals };

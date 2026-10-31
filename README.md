@@ -38,9 +38,17 @@ Die Handy-Seite zeigt Erzeugung, Verbrauch, Einspeisung und Batteriestand live. 
 - Es darf nur eine Stelle den Erneuerungsschlüssel benutzen. Wer sich mit demselben Schlüssel sonst irgendwo
   anmeldet, bringt die Kette durcheinander.
 
-## Vergütung ändern
+## Verkauft und bezogen
 
-Die Sätze stehen in `tarif.json`. `startDate` ist der erste Tag, der mitgerechnet wird.
+Die Seite zeigt zwei Richtungen, umschaltbar oben: **Verkauft** (Einspeisung ins Netz, Linie 1-1:2.29.0) und
+**Bezogen** (Strom aus dem Netz, Linie 1-1:1.29.0). Unter dem Diagramm steht die Bilanz seit dem Startdatum:
+Erlös aus dem Verkauf minus die Kosten für den Bezug.
+
+## Preise ändern
+
+Die Sätze stehen in `tarif.json`: `rates` ist die Vergütung für verkauften Strom, `buyRates` der Strompreis für
+bezogenen Strom (ohne Grundgebühr). `startDate` ist der erste Tag, der mitgerechnet wird. Ein neuer Satz bekommt
+ein eigenes `from`-Datum, ältere Tage behalten ihren alten Satz.
 
 ## Grenzen
 

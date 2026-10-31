@@ -89,6 +89,16 @@ dialog h3{margin:0 0 12px;font-size:19px}
 .btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
 .note{color:var(--muted);font-size:13.5px;margin:8px 0 6px}
 .err{color:var(--warn);font-size:14px;min-height:20px;margin:0 0 6px}
+/* Umschalter Verkauft / Bezogen und Bilanz */
+.mode{display:flex;justify-content:center;gap:6px;margin-top:16px}
+.mode button{border:0;border-radius:20px;padding:8px 18px;font-size:14.5px;font-weight:650;background:rgba(255,255,255,.12);color:var(--head-ink)}
+.mode button[aria-pressed=true]{background:#fff;color:#14324a}
+body[data-mode="buy"]{--accent:#2f6fd0;--accent-ink:#ffffff;--bar:#8fb2ea}
+@media (prefers-color-scheme:dark){body[data-mode="buy"]{--accent:#6ea8ff;--accent-ink:#0b1626;--bar:#4a74c2}}
+.live.buy .watt{color:#fbbf24}
+.bil-head{font-size:13px;color:var(--muted);font-weight:650;text-transform:uppercase;letter-spacing:.6px;margin:0 4px 6px}
+.bil-row{display:grid;grid-template-columns:1fr auto auto;gap:14px;padding:7px 4px;border-top:1px solid var(--line);align-items:baseline}
+.bil-row.total{font-weight:700;font-size:17px}
 [hidden]{display:none!important}
 </style>
 </head>
@@ -104,6 +114,7 @@ dialog h3{margin:0 0 12px;font-size:19px}
       <div class="state"><span class="dot"></span><span id="stateText">Lade …</span></div>
       <div class="watt num"><span id="watt">–</span><small>W</small></div>
       <div class="chips" id="chips"></div>
+      <div class="mode" id="mode" role="group" aria-label="Anzeige"><button type="button" data-mode="sell" aria-pressed="true">Verkauft</button><button type="button" data-mode="buy" aria-pressed="false">Bezogen</button></div>
     </div>
   </div>
 </header>
@@ -124,6 +135,7 @@ dialog h3{margin:0 0 12px;font-size:19px}
     <div class="chart" id="chart"></div>
     <div class="detail" id="detail"></div>
   </div>
+  <div class="card" id="bilanz"></div>
   <div class="foot" id="foot"></div>
 </main>
 
@@ -143,7 +155,7 @@ dialog h3{margin:0 0 12px;font-size:19px}
   <button class="btn" id="csvBtn">Tabelle kopieren (CSV für Excel)</button>
   <button class="btn" id="forgetBtn">Zugangscode auf diesem Gerät vergessen</button>
   <button class="btn primary" id="closeSet">Schließen</button>
-  <div class="note">Gezählt werden die Viertelstundenwerte deines Einspeisezählers aus dem Westnetz-Portal. Die Vergütung steht in der Datei tarif.json.</div>
+  <div class="note">Gezählt werden die Viertelstundenwerte deines Zählers aus dem Westnetz-Portal: verkaufter Strom (Einspeisung) und bezogener Strom aus dem Netz. Vergütung und Strompreis stehen in der Datei tarif.json, der Strompreis ohne Grundgebühr.</div>
 </dialog>
 
 <script>
@@ -171,6 +183,13 @@ let D = null;                 // entschlüsselte Daten
 let view = 'day';
 let anchor = new Date();
 let sel = null;
+let mode = 'sell';            // 'sell' = ins Netz verkauft, 'buy' = aus dem Netz bezogen
+try { if (localStorage.getItem('einspeisung-mode') === 'buy') mode = 'buy'; } catch (_) {}
+function applyMode() {
+  document.body.dataset.mode = mode;
+  document.querySelectorAll('#mode button').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.mode === mode)));
+}
+applyMode();
 
 /* ---------- Entschlüsseln ---------- */
 const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
@@ -215,25 +234,44 @@ function openCode(file) {
 }
 
 /* ---------- Auswertung ---------- */
-function rateAt(date) {
-  const rs = D.rates || [];
+function rateAt(date, m = mode) {
+  const rs = (m === 'buy' ? D.buyRates : D.rates) || [];
   if (!rs.length) return null;
   let ct = rs[0].ct;
   for (const r of rs) if (r.from <= date) ct = r.ct;
   return ct;
 }
-function series(v, cursor) {
+const hoursOf = m => (m === 'buy' ? D.hoursIn : D.hours) || {};
+function series(v, cursor, m = mode) {
   const n = v === 'day' ? 24 : v === 'year' ? 12 : new Date(+cursor.slice(0, 4), +cursor.slice(5, 7), 0).getDate();
   const buckets = Array.from({ length: n }, () => ({ kwh: 0, eur: 0 }));
-  for (const [k, kwh] of Object.entries(D.hours)) {
+  for (const [k, kwh] of Object.entries(hoursOf(m))) {
     if (k.slice(0, 10) < D.startDate || !k.startsWith(cursor)) continue;
     const i = v === 'day' ? +k.slice(11) : v === 'month' ? +k.slice(8, 10) - 1 : +k.slice(5, 7) - 1;
-    const ct = rateAt(k.slice(0, 10));
+    const ct = rateAt(k.slice(0, 10), m);
     buckets[i].kwh += kwh;
     buckets[i].eur = ct === null ? null : buckets[i].eur + kwh * ct / 100;
   }
   const total = buckets.reduce((a, b) => ({ kwh: a.kwh + b.kwh, eur: a.eur === null || b.eur === null ? null : a.eur + b.eur }), { kwh: 0, eur: 0 });
   return { buckets, total };
+}
+function totalSince(m) {
+  let kwh = 0, e = 0, unknown = false;
+  for (const [k, v] of Object.entries(hoursOf(m))) {
+    if (k.slice(0, 10) < D.startDate) continue;
+    const ct = rateAt(k.slice(0, 10), m);
+    kwh += v; if (ct === null) unknown = true; else e += v * ct / 100;
+  }
+  return { kwh, eur: unknown ? null : e };
+}
+function renderBilanz() {
+  const s = totalSince('sell'), b = totalSince('buy');
+  const saldo = s.eur === null || b.eur === null ? null : s.eur - b.eur;
+  const row = (label, kwh, val, cls = '') => `<div class="bil-row${cls}"><span>${label}</span><span class="num">${kwh}</span><b class="num">${val}</b></div>`;
+  $('#bilanz').innerHTML = `<div class="bil-head">Bilanz seit ${D.startDate ? dm(D.startDate) : 'Beginn'}</div>` +
+    row('Verkauft', nfKwh(s.kwh) + ' kWh', s.eur === null ? '–' : '+ ' + eur(s.eur)) +
+    row('Bezogen', nfKwh(b.kwh) + ' kWh', b.eur === null ? '–' : '− ' + eur(b.eur)) +
+    row('Saldo', '', saldo === null ? '–' : (saldo >= 0 ? '+ ' : '− ') + eur(Math.abs(saldo)), ' total');
 }
 const cursor = () => view === 'day' ? dkey(anchor) : view === 'month' ? dkey(anchor).slice(0, 7) : String(anchor.getFullYear());
 function isCurrentPeriod() {
@@ -266,24 +304,32 @@ let liveAttrs = null, liveAt = 0;
 const liveActive = () => liveAttrs && Date.now() - liveAt < 20e3;
 function renderHero() {
   if (!D) return;
-  const live = $('#live');
+  const live = $('#live'), buyMode = mode === 'buy';
+  live.classList.remove('sell', 'buy');
   if (liveActive()) {
     const a = liveAttrs, feed = a.grid_feedin || 0, buy = a.grid_purchase || 0;
     live.classList.add('on');
-    live.classList.toggle('sell', feed > 0);
-    $('#stateText').textContent = feed > 0 ? 'Du verkaufst gerade Strom' : buy > 0 ? `Gerade kein Verkauf · Netzbezug ${nf0.format(buy)} W` : 'Gerade kein Verkauf';
-    $('#watt').textContent = nf0.format(feed);
+    if (buyMode) {
+      live.classList.toggle('buy', buy > 0);
+      $('#stateText').textContent = buy > 0 ? 'Du beziehst gerade Strom aus dem Netz' : feed > 0 ? `Gerade kein Netzbezug · Verkauf ${nf0.format(feed)} W` : 'Gerade kein Netzbezug';
+      $('#watt').textContent = nf0.format(buy);
+    } else {
+      live.classList.toggle('sell', feed > 0);
+      $('#stateText').textContent = feed > 0 ? 'Du verkaufst gerade Strom' : buy > 0 ? `Gerade kein Verkauf · Netzbezug ${nf0.format(buy)} W` : 'Gerade kein Verkauf';
+      $('#watt').textContent = nf0.format(feed);
+    }
     $('#chips').innerHTML = `<span>☀️ Erzeugung<b class="num">${nf0.format(a.production_power || 0)} W</b></span><span>🏠 Verbrauch<b class="num">${nf0.format(a.consumption_power || 0)} W</b></span><span>🔋 Batterie<b class="num">${nf0.format(a.battery_usoc || 0)} %</b></span>`;
     return;
   }
   const fresh = Date.now() - Date.parse(D.asOf) < 2 * 3600e3;
   live.classList.toggle('on', fresh);
-  const w = D.last15.kwh * 4000;
-  live.classList.toggle('sell', fresh && w > 0);
-  $('#stateText').textContent = `Zuletzt verkauft, im Schnitt bis ${fmtTime(D.last15.end)} Uhr`;
+  const rec = buyMode ? D.last15In : D.last15;
+  const w = rec ? rec.kwh * 4000 : 0;
+  live.classList.toggle(buyMode ? 'buy' : 'sell', fresh && w > 0);
+  $('#stateText').textContent = rec ? `${buyMode ? 'Zuletzt bezogen' : 'Zuletzt verkauft'}, im Schnitt bis ${fmtTime(rec.end)} Uhr` : 'Noch keine Werte';
   $('#watt').textContent = nf0.format(w);
   const ct = rateAt(todayKey());
-  $('#chips').innerHTML = `<span>Stand<b class="num">${fmtTime(D.asOf)} Uhr</b></span><span>Vergütung<b class="num">${ct === null ? '–' : nfCt.format(ct) + ' ct'}</b></span><span>Zählung ab<b class="num">${D.startDate ? dm(D.startDate) : '–'}</b></span>`;
+  $('#chips').innerHTML = `<span>Stand<b class="num">${fmtTime(D.asOf)} Uhr</b></span><span>${buyMode ? 'Strompreis' : 'Vergütung'}<b class="num">${ct === null ? '–' : nfCt.format(ct) + ' ct'}</b></span><span>Zählung ab<b class="num">${D.startDate ? dm(D.startDate) : '–'}</b></span>`;
 }
 // Der Zugriffsschlüssel kommt verschlüsselt mit den Zahlen und gilt 2 Stunden. Die Seite fragt sonnen direkt ab.
 async function pollLive() {
@@ -301,6 +347,7 @@ async function pollLive() {
 /* ---------- Anzeige ---------- */
 function render() {
   if (!D) return;
+  applyMode();
   const t = todayKey();
   const set = (i, s) => { const el = document.querySelectorAll('.tile')[i]; el.querySelector('.k span').textContent = nfKwh(s.kwh); el.querySelector('.e').textContent = eur(s.eur); };
   set(0, series('day', t).total); set(1, series('month', t.slice(0, 7)).total); set(2, series('year', t.slice(0, 4)).total);
@@ -314,6 +361,7 @@ function render() {
   foot.classList.toggle('warn', stale);
   foot.textContent = `Zählerwerte aus dem Westnetz-Portal, Stand ${fmtDayTime(D.asOf)} Uhr` + (stale ? ' · nicht aktuell, der Abruf läuft gerade nicht' : '');
   $('#setInfo').textContent = `Daten zuletzt geladen: ${fmtDayTime(D.generatedAt)} Uhr`;
+  renderBilanz();
   drawChart();
   pollLive();
 }
@@ -334,6 +382,12 @@ function drawChart() {
 }
 
 /* ---------- Bedienung ---------- */
+$('#mode').onclick = ev => {
+  const b = ev.target.closest('button[data-mode]'); if (!b) return;
+  mode = b.dataset.mode; sel = null;
+  try { localStorage.setItem('einspeisung-mode', mode); } catch (_) {}
+  render();
+};
 $('#tiles').onclick = ev => {
   const b = ev.target.closest('.tile'); if (!b) return;
   view = b.dataset.view; anchor = new Date(); sel = null;
@@ -361,10 +415,17 @@ $('#forgetBtn').onclick = () => { setCode(null); D = null; sdlg.close(); load(tr
 $('#csvBtn').onclick = async () => {
   if (!D) return;
   const days = {};
-  for (const [k, kwh] of Object.entries(D.hours)) if (k.slice(0, 10) >= D.startDate) days[k.slice(0, 10)] = (days[k.slice(0, 10)] || 0) + kwh;
+  for (const m of ['sell', 'buy']) for (const [k, kwh] of Object.entries(hoursOf(m))) {
+    const d = k.slice(0, 10);
+    if (d >= D.startDate) (days[d] = days[d] || { sell: 0, buy: 0 })[m] += kwh;
+  }
   const num = v => String(v).replace('.', ',');
-  const lines = ['Datum;Verkauft (kWh);Vergütung (ct/kWh);Betrag (EUR)'];
-  for (const d of Object.keys(days).sort()) { const ct = rateAt(d); lines.push([d, num(days[d].toFixed(3)), ct === null ? '' : num(ct), ct === null ? '' : num((days[d] * ct / 100).toFixed(2))].join(';')); }
+  const money = (kwh, m, d) => { const ct = rateAt(d, m); return ct === null ? null : kwh * ct / 100; };
+  const lines = ['Datum;Verkauft (kWh);Erlös (EUR);Bezogen (kWh);Kosten (EUR);Saldo (EUR)'];
+  for (const d of Object.keys(days).sort()) {
+    const e = money(days[d].sell, 'sell', d), c = money(days[d].buy, 'buy', d);
+    lines.push([d, num(days[d].sell.toFixed(3)), e === null ? '' : num(e.toFixed(2)), num(days[d].buy.toFixed(3)), c === null ? '' : num(c.toFixed(2)), e === null || c === null ? '' : num((e - c).toFixed(2))].join(';'));
+  }
   try { await navigator.clipboard.writeText(lines.join('\r\n')); $('#setInfo').textContent = 'Tabelle kopiert. In Excel einfügen.'; }
   catch (_) { $('#setInfo').textContent = 'Kopieren wird auf diesem Gerät blockiert.'; }
 };

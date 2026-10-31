@@ -7,7 +7,7 @@
 //   Aufruf:   node scripts/update.js [Ausgabedatei]
 const fs = require('fs');
 const path = require('path');
-const { fetchExportIntervals } = require('../portal.js');
+const { fetchIntervals } = require('../portal.js');
 const { seal } = require('./seal.js');
 
 const ROOT = path.join(__dirname, '..');
@@ -27,22 +27,29 @@ const hourKey = ms => { const p = Object.fromEntries(berlinFmt.formatToParts(new
     catch (e) { sonnen = { error: 'Live nicht verfügbar' }; console.error('sonnen:', e.message); }
   }
 
-  const d = await fetchExportIntervals({ user: MEDACO_USER, password: MEDACO_PASSWORD, from: tarif.startDate });
-  const hours = {};
-  let lastMs = 0, lastKwh = 0;
-  d.timestamps.forEach((t, i) => {
-    const v = d.values[i], ms = Date.parse(t);
-    if (typeof v !== 'number' || !(ms > 0)) return;
-    const k = hourKey(ms - 1); // Zeitstempel = Ende des Viertelstunden-Intervalls
-    hours[k] = (hours[k] || 0) + v;
-    if (ms > lastMs) { lastMs = ms; lastKwh = v; }
-  });
-  for (const k in hours) hours[k] = Math.round(hours[k] * 10000) / 10000;
-  if (!Object.keys(hours).length) throw new Error('Das Portal hat keine Werte geliefert');
-  const payload = { v: 1, generatedAt: new Date().toISOString(), asOf: new Date(lastMs).toISOString(), last15: { end: new Date(lastMs).toISOString(), kwh: lastKwh },
-    startDate: tarif.startDate, rates: tarif.rates, hours, sonnen };
+  const d = await fetchIntervals({ user: MEDACO_USER, password: MEDACO_PASSWORD, from: tarif.startDate, obis: ['2.29.0', '1.29.0'] });
+  // Viertelstundenwerte zu Stundensummen verdichten. Der Zeitstempel gilt für das Ende des Intervalls.
+  const aggregate = line => {
+    const hours = {};
+    let lastMs = 0, lastKwh = 0;
+    line.timestamps.forEach((t, i) => {
+      const v = line.values[i], ms = Date.parse(t);
+      if (typeof v !== 'number' || !(ms > 0)) return;
+      const k = hourKey(ms - 1);
+      hours[k] = (hours[k] || 0) + v;
+      if (ms > lastMs) { lastMs = ms; lastKwh = v; }
+    });
+    for (const k in hours) hours[k] = Math.round(hours[k] * 10000) / 10000;
+    if (!Object.keys(hours).length) throw new Error('Das Portal hat keine Werte geliefert');
+    return { hours, lastMs, lastKwh };
+  };
+  const out = aggregate(d['2.29.0']), inn = aggregate(d['1.29.0']);
+  const asOfMs = Math.min(out.lastMs, inn.lastMs);
+  const payload = { v: 2, generatedAt: new Date().toISOString(), asOf: new Date(asOfMs).toISOString(),
+    last15: { end: new Date(out.lastMs).toISOString(), kwh: out.lastKwh }, last15In: { end: new Date(inn.lastMs).toISOString(), kwh: inn.lastKwh },
+    startDate: tarif.startDate, rates: tarif.rates, buyRates: tarif.buyRates || [], hours: out.hours, hoursIn: inn.hours, sonnen };
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
   fs.writeFileSync(OUT, JSON.stringify(seal(payload, DATA_KEY)));
-  const sum = Object.values(hours).reduce((a, b) => a + b, 0);
-  console.log(`Fertig: ${Object.keys(hours).length} Stunden, Summe ${sum.toFixed(1)} kWh, letzter Wert ${payload.asOf}, Live ${sonnen && sonnen.accessToken ? 'bereit' : 'aus'}`);
+  const sum = h => Object.values(h).reduce((a, b) => a + b, 0);
+  console.log(`Fertig: ${Object.keys(out.hours).length} Stunden, verkauft ${sum(out.hours).toFixed(1)} kWh, bezogen ${sum(inn.hours).toFixed(1)} kWh, letzter Wert ${payload.asOf}, Live ${sonnen && sonnen.accessToken ? 'bereit' : 'aus'}`);
 })().catch(e => { console.error('Abruf fehlgeschlagen:', e.message); process.exit(1); });
