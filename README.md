@@ -64,9 +64,23 @@ Die Sätze stehen in `tarif.json`: `rates` ist die Vergütung für verkauften St
 bezogenen Strom (ohne Grundgebühr). `startDate` ist der erste Tag, der mitgerechnet wird. Ein neuer Satz bekommt
 ein eigenes `from`-Datum, ältere Tage behalten ihren alten Satz.
 
+## Dauerbetrieb
+
+Die Seite soll ohne Zutun aktuell bleiben, auch wenn monatelang niemand nachsieht.
+
+- **Kette:** Jeder Lauf wartet am Ende gut 13 Minuten (Job `weiter`) und startet den nächsten per
+  `workflow_dispatch`. Der GitHub-Zeitplan allein war unzuverlässig: Er lief bei diesem Repository anfangs gar nicht.
+  Läuft schon ein neuerer Lauf, setzt nur dieser die Kette fort, es entsteht nie eine zweite.
+- **Zeitplan als Reserve:** `cron` auf den Minuten 4, 19, 34 und 49 holt die Kette zurück, falls sie einmal abreißt.
+  Anhalten: `gh workflow disable update.yml`.
+- **Portal fällt aus:** Dann bleibt der zuletzt veröffentlichte Stand online (die Seite meldet „nicht aktuell“) und die
+  Live-Werte laufen weiter. Nach abgelehnter Anmeldung (falsches oder geändertes Passwort) pausiert der Abruf
+  6 Stunden, damit das Konto nicht gesperrt wird. Danach neues Passwort im Secret `MEDACO_PASSWORD` hinterlegen.
+- **Inaktivität:** GitHub schaltet Zeitpläne in öffentlichen Repositories nach 60 Tagen ohne Aktivität ab. Der Workflow
+  legt deshalb nach 40 Tagen einen kleinen Commit an.
+
 ## Grenzen
 
-- Das Portal liefert die Werte mit etwa 15 bis 30 Minuten Verzögerung. Live-Leistung gibt es hier nicht.
-- GitHub verzögert geplante Läufe manchmal um einige Minuten und schaltet sie in öffentlichen Repositories nach
-  60 Tagen ohne Aktivität ab. Der Workflow legt deshalb gelegentlich einen kleinen Commit an.
-- Meldet das Portal die Anmeldung als abgelehnt, bricht der Lauf ab und die Seite zeigt „nicht aktuell“.
+- Das Portal liefert die Werte mit etwa 15 bis 30 Minuten Verzögerung. Live-Leistung kommt separat von sonnen.
+- Reißt die Kette ab und der Zeitplan fällt ebenfalls aus (z. B. bei einer GitHub-Störung), steht die Seite, bis jemand
+  `gh workflow run update.yml` ausführt oder in GitHub unter *Actions* den Lauf von Hand startet.
