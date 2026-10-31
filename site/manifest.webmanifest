@@ -1,7 +1,7 @@
 {
-  "name": "Einspeisung",
-  "short_name": "Einspeisung",
-  "description": "Verkaufter Solarstrom laut Zähler, in kWh und Euro.",
+  "name": "Strombilanz",
+  "short_name": "Strombilanz",
+  "description": "Verkaufter und eingekaufter Strom laut Zähler, in kWh und Euro.",
   "lang": "de",
   "start_url": "./",
   "scope": "./",

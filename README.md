@@ -1,4 +1,4 @@
-# Einspeisung (ohne PC)
+# Strombilanz (ohne PC)
 
 Handy-Seite, die den verkauften Solarstrom laut Einspeisezähler zeigt, in kWh und Euro.
 
@@ -41,7 +41,7 @@ Die Handy-Seite zeigt Erzeugung, Verbrauch, Einspeisung und Batteriestand live. 
 ## Verkauft und bezogen
 
 Die Seite zeigt zwei Richtungen, umschaltbar oben: **Verkauft** (Einspeisung ins Netz, Linie 1-1:2.29.0) und
-**Bezogen** (Strom aus dem Netz, Linie 1-1:1.29.0). Unter dem Diagramm steht die Bilanz seit dem Startdatum:
+**Eingekauft** (Strom aus dem Netz, Linie 1-1:1.29.0). Unter dem Diagramm steht die Bilanz seit dem Startdatum:
 Erlös aus dem Verkauf minus die Kosten für den Bezug.
 
 ## Abschlag, Grundpreis und Gebühren

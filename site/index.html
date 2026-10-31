@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Einspeisung</title>
-<meta name="description" content="Verkaufter Solarstrom laut Zähler, in kWh und Euro.">
+<title>Strombilanz</title>
+<meta name="description" content="Verkaufter und eingekaufter Strom laut Zähler, in kWh und Euro.">
 <meta name="theme-color" content="#14324a">
 <meta name="robots" content="noindex">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Einspeisung">
+<meta name="apple-mobile-web-app-title" content="Strombilanz">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png" type="image/png">
@@ -108,14 +108,14 @@ body[data-mode="buy"]{--accent:#2f6fd0;--accent-ink:#ffffff;--bar:#8fb2ea}
 <header>
   <div class="wrap">
     <div class="top">
-      <h1>☀️ Einspeisung</h1>
+      <h1>☀️ Strombilanz</h1>
       <button class="iconbtn" id="openSettings" aria-label="Einstellungen">⚙</button>
     </div>
     <div class="live" id="live">
       <div class="state"><span class="dot"></span><span id="stateText">Lade …</span></div>
       <div class="watt num"><span id="watt">–</span><small>W</small></div>
       <div class="chips" id="chips"></div>
-      <div class="mode" id="mode" role="group" aria-label="Anzeige"><button type="button" data-mode="sell" aria-pressed="true">Verkauft</button><button type="button" data-mode="buy" aria-pressed="false">Bezogen</button></div>
+      <div class="mode" id="mode" role="group" aria-label="Anzeige"><button type="button" data-mode="sell" aria-pressed="true">Verkauft</button><button type="button" data-mode="buy" aria-pressed="false">Eingekauft</button></div>
     </div>
   </div>
 </header>
@@ -157,7 +157,7 @@ body[data-mode="buy"]{--accent:#2f6fd0;--accent-ink:#ffffff;--bar:#8fb2ea}
   <button class="btn" id="csvBtn">Tabelle kopieren (CSV für Excel)</button>
   <button class="btn" id="forgetBtn">Zugangscode auf diesem Gerät vergessen</button>
   <button class="btn primary" id="closeSet">Schließen</button>
-  <div class="note">Gezählt werden die Viertelstundenwerte deines Zählers aus dem Westnetz-Portal: verkaufter Strom (Einspeisung) und bezogener Strom aus dem Netz. Vergütung und Strompreis stehen in der Datei tarif.json, der Strompreis ohne Grundgebühr.</div>
+  <div class="note">Gezählt werden die Viertelstundenwerte deines Zählers aus dem Westnetz-Portal: verkaufter Strom (Einspeisung) und eingekaufter Strom aus dem Netz. Vergütung und Strompreis stehen in der Datei tarif.json, der Strompreis ohne Grundgebühr.</div>
 </dialog>
 
 <script>
@@ -293,7 +293,7 @@ function renderBilanz() {
   const saldo = s.eur === null || b.eur === null ? null : s.eur - b.eur - feeTotal;
   $('#bilanz').innerHTML = `<div class="bil-head">Bilanz seit ${D.startDate ? dm(D.startDate) : 'Beginn'}</div>` +
     bilRow('Verkauft', nfKwh(s.kwh) + ' kWh', s.eur === null ? '–' : '+ ' + eur(s.eur)) +
-    bilRow('Bezogen', nfKwh(b.kwh) + ' kWh', b.eur === null ? '–' : '− ' + eur(b.eur)) +
+    bilRow('Eingekauft', nfKwh(b.kwh) + ' kWh', b.eur === null ? '–' : '− ' + eur(b.eur)) +
     fees.map(f => bilRow(`${f.name}, ${f.months} ${f.months === 1 ? 'Monat' : 'Monate'}`, '', '− ' + eur(f.total))).join('') +
     bilRow('Saldo', '', signed(saldo), ' total');
 }
@@ -323,7 +323,7 @@ function renderAbschlag() {
     bilRow(`Abschläge gezahlt, ${mon(paid.months)}`, '', '− ' + eur(paid.total)) +
     bilRow('Stromkosten laut Zähler', nfKwh(kwh) + ' kWh', cost === null ? '–' : '− ' + eur(cost)) +
     bilRow(diff !== null && diff < 0 ? 'Voraussichtliche Nachzahlung' : 'Voraussichtliches Guthaben', '', diff === null ? '–' : eur(Math.abs(diff)), ' total') +
-    `<div class="bil-note">Stromkosten: Arbeitspreis × bezogene kWh${gp.months ? ` plus Grundpreis (${mon(gp.months)})` : ''}. Der laufende Monat zählt beim Abschlag voll als gezahlt.</div>`;
+    `<div class="bil-note">Stromkosten: Arbeitspreis × eingekaufte kWh${gp.months ? ` plus Grundpreis (${mon(gp.months)})` : ''}. Der laufende Monat zählt beim Abschlag voll als gezahlt.</div>`;
 }
 const cursor = () => view === 'day' ? dkey(anchor) : view === 'month' ? dkey(anchor).slice(0, 7) : String(anchor.getFullYear());
 function isCurrentPeriod() {
@@ -363,11 +363,11 @@ function renderHero() {
     live.classList.add('on');
     if (buyMode) {
       live.classList.toggle('buy', buy > 0);
-      $('#stateText').textContent = buy > 0 ? 'Du beziehst gerade Strom aus dem Netz' : feed > 0 ? `Gerade kein Netzbezug · Verkauf ${nf0.format(feed)} W` : 'Gerade kein Netzbezug';
+      $('#stateText').textContent = buy > 0 ? 'Du kaufst gerade Strom aus dem Netz ein' : feed > 0 ? `Gerade kein Einkauf · Verkauf ${nf0.format(feed)} W` : 'Gerade kein Einkauf';
       $('#watt').textContent = nf0.format(buy);
     } else {
       live.classList.toggle('sell', feed > 0);
-      $('#stateText').textContent = feed > 0 ? 'Du verkaufst gerade Strom' : buy > 0 ? `Gerade kein Verkauf · Netzbezug ${nf0.format(buy)} W` : 'Gerade kein Verkauf';
+      $('#stateText').textContent = feed > 0 ? 'Du verkaufst gerade Strom' : buy > 0 ? `Gerade kein Verkauf · Einkauf ${nf0.format(buy)} W` : 'Gerade kein Verkauf';
       $('#watt').textContent = nf0.format(feed);
     }
     $('#chips').innerHTML = `<span>☀️ Erzeugung<b class="num">${nf0.format(a.production_power || 0)} W</b></span><span>🏠 Verbrauch<b class="num">${nf0.format(a.consumption_power || 0)} W</b></span><span>🔋 Batterie<b class="num">${nf0.format(a.battery_usoc || 0)} %</b></span>`;
@@ -378,7 +378,7 @@ function renderHero() {
   const rec = buyMode ? D.last15In : D.last15;
   const w = rec ? rec.kwh * 4000 : 0;
   live.classList.toggle(buyMode ? 'buy' : 'sell', fresh && w > 0);
-  $('#stateText').textContent = rec ? `${buyMode ? 'Zuletzt bezogen' : 'Zuletzt verkauft'}, im Schnitt bis ${fmtTime(rec.end)} Uhr` : 'Noch keine Werte';
+  $('#stateText').textContent = rec ? `${buyMode ? 'Zuletzt eingekauft' : 'Zuletzt verkauft'}, im Schnitt bis ${fmtTime(rec.end)} Uhr` : 'Noch keine Werte';
   $('#watt').textContent = nf0.format(w);
   const ct = rateAt(todayKey());
   $('#chips').innerHTML = `<span>Stand<b class="num">${fmtTime(D.asOf)} Uhr</b></span><span>${buyMode ? 'Strompreis' : 'Vergütung'}<b class="num">${ct === null ? '–' : nfCt.format(ct) + ' ct'}</b></span><span>Zählung ab<b class="num">${D.startDate ? dm(D.startDate) : '–'}</b></span>`;
@@ -474,7 +474,7 @@ $('#csvBtn').onclick = async () => {
   }
   const num = v => String(v).replace('.', ',');
   const money = (kwh, m, d) => { const ct = rateAt(d, m); return ct === null ? null : kwh * ct / 100; };
-  const lines = ['Datum;Verkauft (kWh);Erlös (EUR);Bezogen (kWh);Kosten (EUR);Saldo (EUR)'];
+  const lines = ['Datum;Verkauft (kWh);Erlös (EUR);Eingekauft (kWh);Kosten (EUR);Saldo (EUR)'];
   for (const d of Object.keys(days).sort()) {
     const e = money(days[d].sell, 'sell', d), c = money(days[d].buy, 'buy', d);
     lines.push([d, num(days[d].sell.toFixed(3)), e === null ? '' : num(e.toFixed(2)), num(days[d].buy.toFixed(3)), c === null ? '' : num(c.toFixed(2)), e === null || c === null ? '' : num((e - c).toFixed(2))].join(';'));
