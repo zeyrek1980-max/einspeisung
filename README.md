@@ -23,6 +23,21 @@ Unter *Settings → Secrets and variables → Actions* drei Secrets anlegen:
 
 Unter *Settings → Pages* als Quelle „GitHub Actions“ wählen. Dann den Workflow einmal von Hand starten.
 
+## Live-Werte
+
+Die Handy-Seite zeigt Erzeugung, Verbrauch, Einspeisung und Batteriestand live. Sie fragt dafür alle 5 Sekunden
+`my-api.sonnen.de/v1/sites/<id>/live-state` ab, mit einem Zugriffsschlüssel, der 2 Stunden gilt.
+
+- Der Workflow erneuert den Schlüssel (`scripts/sonnen.js`) und legt ihn verschlüsselt (Zugangscode) in
+  `data.enc.json` ab. sonnen tauscht bei jeder Erneuerung den Erneuerungsschlüssel aus. Der aktuelle Stand liegt
+  verschlüsselt (Geheimnis `TOKEN_KEY`) im Zweig `state` und wird nach jeder Erneuerung sofort gesichert.
+- Zusätzliche Secrets: `SONNEN_SEED` (JSON mit `refreshToken` und `siteId`, nur für den ersten Start oder einen
+  Neustart der Kette) und `TOKEN_KEY` (Code für den Zustand).
+- Fällt Live aus, zeigt die Seite weiter die letzte Viertelstunde vom Zähler. Ist die Kette gerissen (Fehler
+  „sonnen lehnt die Erneuerung ab“ im Lauf), muss `SONNEN_SEED` neu gesetzt und der Zweig `state` gelöscht werden.
+- Es darf nur eine Stelle den Erneuerungsschlüssel benutzen. Wer sich mit demselben Schlüssel sonst irgendwo
+  anmeldet, bringt die Kette durcheinander.
+
 ## Vergütung ändern
 
 Die Sätze stehen in `tarif.json`. `startDate` ist der erste Tag, der mitgerechnet wird.
