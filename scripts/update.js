@@ -8,8 +8,9 @@
 const fs = require('fs');
 const path = require('path');
 const { fetchIntervals } = require('../portal.js');
-const { seal } = require('./seal.js');
+const { seal, open } = require('./seal.js');
 
+const REJECT_PAUSE_MS = 6 * 3600e3;
 const ROOT = path.join(__dirname, '..');
 const OUT = process.argv[2] || path.join(ROOT, 'site', 'data.enc.json');
 const tarif = JSON.parse(fs.readFileSync(path.join(ROOT, 'tarif.json'), 'utf8'));
@@ -27,6 +28,35 @@ const hourKey = ms => { const p = Object.fromEntries(berlinFmt.formatToParts(new
     catch (e) { sonnen = { error: 'Live nicht verfügbar' }; console.error('sonnen:', e.message); }
   }
 
+  const prev = await previous();
+  try {
+    // Nach abgelehnter Anmeldung nicht sofort wieder versuchen: Das Portal sperrt das Konto nach Fehlversuchen.
+    const pausedUntil = prev && prev.portalRejectedAt ? Date.parse(prev.portalRejectedAt) + REJECT_PAUSE_MS : 0;
+    if (Date.now() < pausedUntil) throw new Error('Anmeldung beim Portal pausiert nach Ablehnung bis ' + new Date(pausedUntil).toISOString());
+    await publishFresh(sonnen);
+  } catch (e) {
+    // Fällt das Portal aus, bleibt die Seite mit dem letzten Stand online und die Live-Werte laufen weiter.
+    if (!prev) throw e;
+    const rejected = /^Anmeldung abgelehnt/.test(e.message);
+    console.error('Portal-Abruf nicht möglich, letzter Stand bleibt:', e.message);
+    console.log(`::warning::Portal-Abruf nicht möglich (${e.message}), die Seite zeigt den Stand vom ${prev.asOf}`);
+    fs.mkdirSync(path.dirname(OUT), { recursive: true });
+    fs.writeFileSync(OUT, JSON.stringify(seal({ ...prev, sonnen, portalRejectedAt: rejected ? new Date().toISOString() : prev.portalRejectedAt }, DATA_KEY)));
+  }
+})().catch(e => { console.error('Abruf fehlgeschlagen:', e.message); process.exit(1); });
+
+// Zuletzt veröffentlichter Stand der Seite, als Rückfall und für die Wartezeit nach abgelehnter Anmeldung.
+async function previous() {
+  const [owner, repo] = (process.env.GITHUB_REPOSITORY || '').split('/');
+  const url = process.env.PREVIOUS_URL || (repo && `https://${owner}.github.io/${repo}/data.enc.json`);
+  if (!url) return null;
+  try {
+    const r = await fetch(url + '?t=' + Date.now(), { headers: { 'Cache-Control': 'no-cache' } });
+    return r.ok ? open(await r.json(), DATA_KEY) : null;
+  } catch (_) { return null; }
+}
+
+async function publishFresh(sonnen) {
   const d = await fetchIntervals({ user: MEDACO_USER, password: MEDACO_PASSWORD, from: tarif.startDate, obis: ['2.29.0', '1.29.0'] });
   // Viertelstundenwerte zu Stundensummen verdichten. Der Zeitstempel gilt für das Ende des Intervalls.
   const aggregate = line => {
@@ -52,4 +82,4 @@ const hourKey = ms => { const p = Object.fromEntries(berlinFmt.formatToParts(new
   fs.writeFileSync(OUT, JSON.stringify(seal(payload, DATA_KEY)));
   const sum = h => Object.values(h).reduce((a, b) => a + b, 0);
   console.log(`Fertig: ${Object.keys(out.hours).length} Stunden, verkauft ${sum(out.hours).toFixed(1)} kWh, bezogen ${sum(inn.hours).toFixed(1)} kWh, letzter Wert ${payload.asOf}, Live ${sonnen && sonnen.accessToken ? 'bereit' : 'aus'}`);
-})().catch(e => { console.error('Abruf fehlgeschlagen:', e.message); process.exit(1); });
+}

@@ -1,8 +1,12 @@
 name: Einspeisung aktualisieren
 
+# Zwei Auslöser, damit die Seite dauerhaft aktuell bleibt:
+#  1. Kette: Jeder Lauf wartet am Ende gut 13 Minuten und startet den nächsten selbst (Job "weiter").
+#     Das geht ohne Zutun, auch wenn der GitHub-Zeitplan ausfällt (bei diesem Repository lief er anfangs gar nicht).
+#  2. Zeitplan als Reserve, falls die Kette einmal abreißt. Nicht auf :00/:15/:30/:45 legen: Dort ist GitHub überlastet.
+# Anhalten: "gh workflow disable update.yml" (dann endet auch die Kette).
 on:
   schedule:
-    # Nicht auf :00/:15/:30/:45 legen: zu den vollen Viertelstunden ist GitHub überlastet und lässt Läufe ausfallen.
     - cron: '4,19,34,49 * * * *'
   workflow_dispatch:
 
@@ -10,14 +14,15 @@ permissions:
   contents: write
   pages: write
   id-token: write
-
-concurrency:
-  group: einspeisung
-  cancel-in-progress: false
+  actions: write
 
 jobs:
   update:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: einspeisung
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
@@ -88,3 +93,26 @@ jobs:
             git commit -m "Keepalive"
             git push
           fi
+
+  # Wartet und stößt den nächsten Lauf an, auch wenn der Abruf oben gescheitert ist.
+  weiter:
+    needs: update
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Warten und nächsten Lauf starten
+        run: |
+          sleep 780
+          # Läuft schon ein neuerer Lauf (z. B. vom Zeitplan), führt dieser die Kette fort. So entsteht nie eine zweite Kette.
+          newer=$(gh run list --workflow update.yml --limit 30 --json databaseId,status             --jq "[.[] | select(.databaseId > ${GITHUB_RUN_ID}) | select(.status != \"completed\")] | length")
+          if [ "${newer:-0}" -gt 0 ]; then echo "Ein neuerer Lauf ist schon unterwegs."; exit 0; fi
+          for i in 1 2 3 4; do
+            if gh workflow run update.yml; then echo "Nächster Lauf gestartet."; exit 0; fi
+            sleep 30
+          done
+          echo "::error::Nächster Lauf konnte nicht gestartet werden, der Zeitplan springt als Reserve ein."
+          exit 1
