@@ -47,7 +47,7 @@ const hourKey = ms => { const p = Object.fromEntries(berlinFmt.formatToParts(new
   const asOfMs = Math.min(out.lastMs, inn.lastMs);
   const payload = { v: 2, generatedAt: new Date().toISOString(), asOf: new Date(asOfMs).toISOString(),
     last15: { end: new Date(out.lastMs).toISOString(), kwh: out.lastKwh }, last15In: { end: new Date(inn.lastMs).toISOString(), kwh: inn.lastKwh },
-    startDate: tarif.startDate, rates: tarif.rates, buyRates: tarif.buyRates || [], hours: out.hours, hoursIn: inn.hours, sonnen };
+    startDate: tarif.startDate, rates: tarif.rates, buyRates: tarif.buyRates || [], monthly: tarif.monthly || {}, hours: out.hours, hoursIn: inn.hours, sonnen };
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
   fs.writeFileSync(OUT, JSON.stringify(seal(payload, DATA_KEY)));
   const sum = h => Object.values(h).reduce((a, b) => a + b, 0);

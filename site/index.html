@@ -99,6 +99,7 @@ body[data-mode="buy"]{--accent:#2f6fd0;--accent-ink:#ffffff;--bar:#8fb2ea}
 .bil-head{font-size:13px;color:var(--muted);font-weight:650;text-transform:uppercase;letter-spacing:.6px;margin:0 4px 6px}
 .bil-row{display:grid;grid-template-columns:1fr auto auto;gap:14px;padding:7px 4px;border-top:1px solid var(--line);align-items:baseline}
 .bil-row.total{font-weight:700;font-size:17px}
+.bil-note{color:var(--muted);font-size:13px;margin:8px 4px 0}
 [hidden]{display:none!important}
 </style>
 </head>
@@ -136,6 +137,7 @@ body[data-mode="buy"]{--accent:#2f6fd0;--accent-ink:#ffffff;--bar:#8fb2ea}
     <div class="detail" id="detail"></div>
   </div>
   <div class="card" id="bilanz"></div>
+  <div class="card" id="abschlag" hidden></div>
   <div class="foot" id="foot"></div>
 </main>
 
@@ -174,10 +176,13 @@ const DOW = ['So','Mo','Di','Mi','Do','Fr','Sa'];
 const KEY = 'einspeisung-code';
 const dkey = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const berlinFmt = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Berlin', year: 'numeric', month: '2-digit', day: '2-digit' });
-const todayKey = () => berlinFmt.format(new Date());
+// Zum Ausprobieren künftiger Monate: Adresse mit ?heute=JJJJ-MM-TT öffnen.
+const fakeToday = (/^\d{4}-\d{2}-\d{2}$/.exec(new URLSearchParams(location.search).get('heute') || '') || [null])[0];
+const todayKey = () => fakeToday || berlinFmt.format(new Date());
 const fmtTime = iso => new Date(iso).toLocaleTimeString('de-DE', { timeZone: 'Europe/Berlin', hour: '2-digit', minute: '2-digit' });
 const fmtDayTime = iso => new Date(iso).toLocaleString('de-DE', { timeZone: 'Europe/Berlin', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 const dm = iso => new Date(iso + 'T12:00').toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+const dmy = iso => new Date(iso + 'T12:00').toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
 let D = null;                 // entschlüsselte Daten
 let view = 'day';
@@ -264,14 +269,61 @@ function totalSince(m) {
   }
   return { kwh, eur: unknown ? null : e };
 }
+// Summe monatlicher Beträge: list = [{ from, eur }], je angefangenem Monat ab `from` (nicht vor `notBefore`) bis zum Monat von `upTo`.
+function monthsSum(list, upTo, notBefore = '0000-01-01') {
+  if (!list || !list.length) return { total: 0, months: 0 };
+  const sorted = [...list].sort((a, b) => a.from.localeCompare(b.from));
+  let y = +sorted[0].from.slice(0, 4), mo = +sorted[0].from.slice(5, 7), total = 0, months = 0;
+  const end = upTo.slice(0, 7), nb = notBefore.slice(0, 7);
+  while (`${y}-${pad(mo)}` <= end) {
+    const key = `${y}-${pad(mo)}`;
+    let v = null;
+    for (const e of sorted) if (e.from.slice(0, 7) <= key) v = e.eur;
+    if (v !== null && key >= nb) { total += v; months++; }
+    if (++mo > 12) { mo = 1; y++; }
+  }
+  return { total, months };
+}
+const signed = v => v === null ? '–' : (v >= 0 ? '+ ' : '− ') + eur(Math.abs(v));
+const bilRow = (label, kwh, val, cls = '') => `<div class="bil-row${cls}"><span>${label}</span><span class="num">${kwh}</span><b class="num">${val}</b></div>`;
 function renderBilanz() {
   const s = totalSince('sell'), b = totalSince('buy');
-  const saldo = s.eur === null || b.eur === null ? null : s.eur - b.eur;
-  const row = (label, kwh, val, cls = '') => `<div class="bil-row${cls}"><span>${label}</span><span class="num">${kwh}</span><b class="num">${val}</b></div>`;
+  const fees = ((D.monthly && D.monthly.gebuehren) || []).map(f => ({ name: f.name, ...monthsSum([f], todayKey(), D.startDate) })).filter(f => f.months);
+  const feeTotal = fees.reduce((a, f) => a + f.total, 0);
+  const saldo = s.eur === null || b.eur === null ? null : s.eur - b.eur - feeTotal;
   $('#bilanz').innerHTML = `<div class="bil-head">Bilanz seit ${D.startDate ? dm(D.startDate) : 'Beginn'}</div>` +
-    row('Verkauft', nfKwh(s.kwh) + ' kWh', s.eur === null ? '–' : '+ ' + eur(s.eur)) +
-    row('Bezogen', nfKwh(b.kwh) + ' kWh', b.eur === null ? '–' : '− ' + eur(b.eur)) +
-    row('Saldo', '', saldo === null ? '–' : (saldo >= 0 ? '+ ' : '− ') + eur(Math.abs(saldo)), ' total');
+    bilRow('Verkauft', nfKwh(s.kwh) + ' kWh', s.eur === null ? '–' : '+ ' + eur(s.eur)) +
+    bilRow('Bezogen', nfKwh(b.kwh) + ' kWh', b.eur === null ? '–' : '− ' + eur(b.eur)) +
+    fees.map(f => bilRow(`${f.name}, ${f.months} ${f.months === 1 ? 'Monat' : 'Monate'}`, '', '− ' + eur(f.total))).join('') +
+    bilRow('Saldo', '', signed(saldo), ' total');
+}
+// Abschlag gegen die Stromkosten laut Zähler (Arbeitspreis × bezogene kWh + Grundpreis) ab dem ersten Abschlagsmonat.
+function renderAbschlag() {
+  const el = $('#abschlag'), m = D.monthly || {}, ab = m.abschlag || [];
+  if (!ab.length) { el.hidden = true; return; }
+  el.hidden = false;
+  const first = [...ab].sort((a, b) => a.from.localeCompare(b.from))[0].from, t = todayKey();
+  const head = `<div class="bil-head">Abschlag ab ${dmy(first)}</div>`;
+  if (t.slice(0, 7) < first.slice(0, 7)) {
+    el.innerHTML = head + `<div class="bil-note">Der Abschlag beginnt im ${MONTHS[+first.slice(5, 7) - 1]} ${first.slice(0, 4)}. Dann siehst du hier, ob er zu den Stromkosten laut Zähler passt.</div>`;
+    return;
+  }
+  const paid = monthsSum(ab, t), gp = monthsSum(m.grundpreis || [], t, first);
+  let kwh = 0, arb = 0, unknown = false;
+  for (const [k, v] of Object.entries(hoursOf('buy'))) {
+    const d = k.slice(0, 10);
+    if (d < first || d < D.startDate) continue;
+    const ct = rateAt(d, 'buy');
+    kwh += v; if (ct === null) unknown = true; else arb += v * ct / 100;
+  }
+  const cost = unknown ? null : arb + gp.total;
+  const diff = cost === null ? null : paid.total - cost;
+  const mon = n => `${n} ${n === 1 ? 'Monat' : 'Monate'}`;
+  el.innerHTML = head +
+    bilRow(`Abschläge gezahlt, ${mon(paid.months)}`, '', '− ' + eur(paid.total)) +
+    bilRow('Stromkosten laut Zähler', nfKwh(kwh) + ' kWh', cost === null ? '–' : '− ' + eur(cost)) +
+    bilRow(diff !== null && diff < 0 ? 'Voraussichtliche Nachzahlung' : 'Voraussichtliches Guthaben', '', diff === null ? '–' : eur(Math.abs(diff)), ' total') +
+    `<div class="bil-note">Stromkosten: Arbeitspreis × bezogene kWh${gp.months ? ` plus Grundpreis (${mon(gp.months)})` : ''}. Der laufende Monat zählt beim Abschlag voll als gezahlt.</div>`;
 }
 const cursor = () => view === 'day' ? dkey(anchor) : view === 'month' ? dkey(anchor).slice(0, 7) : String(anchor.getFullYear());
 function isCurrentPeriod() {
@@ -362,6 +414,7 @@ function render() {
   foot.textContent = `Zählerwerte aus dem Westnetz-Portal, Stand ${fmtDayTime(D.asOf)} Uhr` + (stale ? ' · nicht aktuell, der Abruf läuft gerade nicht' : '');
   $('#setInfo').textContent = `Daten zuletzt geladen: ${fmtDayTime(D.generatedAt)} Uhr`;
   renderBilanz();
+  renderAbschlag();
   drawChart();
   pollLive();
 }

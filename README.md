@@ -44,6 +44,20 @@ Die Seite zeigt zwei Richtungen, umschaltbar oben: **Verkauft** (Einspeisung ins
 **Bezogen** (Strom aus dem Netz, Linie 1-1:1.29.0). Unter dem Diagramm steht die Bilanz seit dem Startdatum:
 Erlös aus dem Verkauf minus die Kosten für den Bezug.
 
+## Abschlag, Grundpreis und Gebühren
+
+In `tarif.json` unter `monthly` stehen die monatlichen Beträge. Jede Liste kann mehrere Einträge mit eigenem
+`from`-Datum haben, falls sich ein Betrag ändert. Ein angefangener Monat zählt voll.
+
+- `abschlag`: Abschlag für den Strom. Die Seite vergleicht ihn ab dem ersten Abschlagsmonat mit den Stromkosten
+  laut Zähler (Arbeitspreis mal bezogene kWh plus Grundpreis) und zeigt ein voraussichtliches Guthaben oder eine
+  Nachzahlung.
+- `grundpreis`: monatlicher Grundpreis des Stromvertrags.
+- `gebuehren`: weitere monatliche Gebühren, z. B. die Direktvermarktung. Sie fließen in die Bilanz seit
+  Startdatum ein.
+
+Zum Ausprobieren künftiger Monate die Seite mit `?heute=2026-11-20` öffnen.
+
 ## Preise ändern
 
 Die Sätze stehen in `tarif.json`: `rates` ist die Vergütung für verkauften Strom, `buyRates` der Strompreis für
