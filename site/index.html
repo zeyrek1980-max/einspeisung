@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Einspeisung</title>
+<meta name="description" content="Verkaufter Solarstrom laut Zähler, in kWh und Euro.">
+<meta name="theme-color" content="#14324a">
+<meta name="robots" content="noindex">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Einspeisung">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+:root{
+  --bg:#f6f4ef; --card:#ffffff; --ink:#1d2a33; --muted:#66737c; --line:#e6e2d8;
+  --accent:#e8920c; --accent-ink:#ffffff; --bar:#f3b84a; --bar-off:#ece6d6;
+  --warn:#b3261e; --head:#14324a; --head-ink:#ffffff; --head-muted:#a9bfd0; --live:#4ade80;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#0f171d; --card:#18232b; --ink:#e8eef2; --muted:#8fa0ab; --line:#26343e;
+    --accent:#f0a02a; --accent-ink:#1a1200; --bar:#d49a2a; --bar-off:#243540;
+    --warn:#ff8a80; --head:#0b2234; --head-ink:#ffffff; --head-muted:#8fa9bd;
+  }
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{background:var(--bg)}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  padding-bottom:calc(28px + env(safe-area-inset-bottom))}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer}
+.wrap{max-width:560px;margin:0 auto;padding:0 16px}
+.num{font-variant-numeric:tabular-nums}
+
+header{background:var(--head);color:var(--head-ink);padding:calc(12px + env(safe-area-inset-top)) 0 56px;border-radius:0 0 26px 26px}
+.top{display:flex;align-items:center;justify-content:space-between}
+.top h1{font-size:17px;margin:0;font-weight:650}
+.iconbtn{width:44px;height:44px;border:0;border-radius:50%;background:rgba(255,255,255,.12);color:var(--head-ink);font-size:20px;display:grid;place-items:center}
+.iconbtn:active{background:rgba(255,255,255,.24)}
+.live{text-align:center;padding-top:8px}
+.state{display:inline-flex;align-items:center;gap:8px;color:var(--head-muted);font-size:15px}
+.dot{width:10px;height:10px;border-radius:50%;background:#7b8b97}
+.live.on .dot{background:var(--live)}
+.live.on .state{color:var(--head-ink)}
+.watt{font-size:60px;font-weight:720;line-height:1.05;margin:8px 0 2px}
+.watt small{font-size:24px;font-weight:600;color:var(--head-muted);margin-left:6px}
+.live.sell .watt{color:var(--live)}
+.chips{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:16px;color:var(--head-muted);font-size:12.5px}
+.chips b{display:block;margin-top:1px;font-size:16px;font-weight:650;color:var(--head-ink)}
+
+.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:-38px}
+.tile{background:var(--card);border:2px solid transparent;border-radius:16px;padding:12px 8px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.12)}
+.tile[aria-pressed=true]{border-color:var(--accent)}
+.tile .t{font-size:12.5px;color:var(--muted);font-weight:650;text-transform:uppercase;letter-spacing:.6px}
+.tile .k{font-size:21px;font-weight:700;margin-top:2px}
+.tile .k small{font-size:12px;font-weight:600;color:var(--muted);margin-left:2px}
+.tile .e{font-size:14.5px;font-weight:650;color:var(--accent)}
+
+.card{background:var(--card);border-radius:18px;padding:14px 12px 12px;margin-top:14px;box-shadow:0 1px 0 var(--line)}
+.nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.nav .iconbtn{background:var(--bar-off);color:var(--ink);width:40px;height:40px}
+.nav .iconbtn:disabled{opacity:.25}
+.nav .title{font-weight:650}
+.chart{display:grid;gap:2px;align-items:end}
+.bar{border:0;background:none;padding:0;display:flex;flex-direction:column;align-items:stretch;min-width:0}
+.bar .col{height:110px;display:flex;align-items:flex-end;border-radius:4px;background:var(--bar-off);overflow:hidden}
+.bar .fill{display:block;width:100%;background:var(--bar);min-height:0}
+.bar.now .fill{background:var(--accent)}
+.bar.sel .col{outline:2px solid var(--ink);outline-offset:1px}
+.bar .lbl{font-size:10.5px;color:var(--muted);text-align:center;padding-top:5px;height:20px;white-space:nowrap;overflow:visible}
+.detail{text-align:center;color:var(--muted);font-size:14.5px;padding-top:8px;min-height:30px}
+.detail b{color:var(--ink)}
+.foot{color:var(--muted);font-size:13px;text-align:center;margin:16px 8px 0}
+.foot.warn{color:var(--warn)}
+
+dialog{margin:auto auto 0;width:100%;max-width:560px;border:0;border-radius:22px 22px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom));
+  background:var(--card);color:var(--ink);max-height:92dvh;overflow:auto}
+dialog::backdrop{background:rgba(0,0,0,.5)}
+dialog h3{margin:0 0 12px;font-size:19px}
+.field{display:block;margin-bottom:12px}
+.field>span{display:block;font-size:13px;color:var(--muted);margin-bottom:4px;font-weight:600}
+.field input{width:100%;height:50px;border:1.5px solid var(--line);border-radius:12px;padding:0 14px;background:var(--bg);font-size:17px}
+.field input:focus{outline:none;border-color:var(--accent)}
+.btn{display:block;width:100%;height:52px;border-radius:14px;border:1.5px solid var(--line);background:none;font-weight:650;font-size:16px;text-align:center;margin-top:8px}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.note{color:var(--muted);font-size:13.5px;margin:8px 0 6px}
+.err{color:var(--warn);font-size:14px;min-height:20px;margin:0 0 6px}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="top">
+      <h1>☀️ Einspeisung</h1>
+      <button class="iconbtn" id="openSettings" aria-label="Einstellungen">⚙</button>
+    </div>
+    <div class="live" id="live">
+      <div class="state"><span class="dot"></span><span id="stateText">Lade …</span></div>
+      <div class="watt num"><span id="watt">–</span><small>W</small></div>
+      <div class="chips" id="chips"></div>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="tiles" id="tiles">
+    <button class="tile" data-view="day" aria-pressed="true"><div class="t">Heute</div><div class="k num"><span>–</span><small>kWh</small></div><div class="e num">–</div></button>
+    <button class="tile" data-view="month" aria-pressed="false"><div class="t">Monat</div><div class="k num"><span>–</span><small>kWh</small></div><div class="e num">–</div></button>
+    <button class="tile" data-view="year" aria-pressed="false"><div class="t" id="yearTileLabel">Jahr</div><div class="k num"><span>–</span><small>kWh</small></div><div class="e num">–</div></button>
+  </div>
+
+  <div class="card">
+    <div class="nav">
+      <button class="iconbtn" id="prev" aria-label="Zurück">‹</button>
+      <div class="title" id="title"></div>
+      <button class="iconbtn" id="next" aria-label="Weiter">›</button>
+    </div>
+    <div class="chart" id="chart"></div>
+    <div class="detail" id="detail"></div>
+  </div>
+  <div class="foot" id="foot"></div>
+</main>
+
+<dialog id="codeDlg">
+  <form id="codeForm" autocomplete="off">
+    <h3>Zugangscode</h3>
+    <p class="note">Die Zahlen sind verschlüsselt. Gib den Zugangscode einmal ein, dann merkt sich dieses Gerät ihn.</p>
+    <label class="field"><span>Zugangscode</span><input type="text" id="codeInput" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="XXXX-XXXX-XXXX"></label>
+    <div class="err" id="codeErr" role="alert"></div>
+    <button class="btn primary" type="submit">Öffnen</button>
+  </form>
+</dialog>
+
+<dialog id="setDlg">
+  <h3>Einstellungen</h3>
+  <div class="note" id="setInfo"></div>
+  <button class="btn" id="csvBtn">Tabelle kopieren (CSV für Excel)</button>
+  <button class="btn" id="forgetBtn">Zugangscode auf diesem Gerät vergessen</button>
+  <button class="btn primary" id="closeSet">Schließen</button>
+  <div class="note">Gezählt werden die Viertelstundenwerte deines Einspeisezählers aus dem Westnetz-Portal. Die Vergütung steht in der Datei tarif.json.</div>
+</dialog>
+
+<script>
+(() => {
+'use strict';
+const $ = (s, r = document) => r.querySelector(s);
+const pad = n => String(n).padStart(2, '0');
+const nf0 = new Intl.NumberFormat('de-DE', { maximumFractionDigits: 0 });
+const nfKwh = v => new Intl.NumberFormat('de-DE', { minimumFractionDigits: v < 10 ? 2 : 1, maximumFractionDigits: v < 10 ? 2 : 1 }).format(v);
+const nfEur = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
+const nfCt = new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 3 });
+const eur = v => v === null || v === undefined ? '–' : nfEur.format(v);
+const MONTHS = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+const MON3 = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+const DOW = ['So','Mo','Di','Mi','Do','Fr','Sa'];
+const KEY = 'einspeisung-code';
+const dkey = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const berlinFmt = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Berlin', year: 'numeric', month: '2-digit', day: '2-digit' });
+const todayKey = () => berlinFmt.format(new Date());
+const fmtTime = iso => new Date(iso).toLocaleTimeString('de-DE', { timeZone: 'Europe/Berlin', hour: '2-digit', minute: '2-digit' });
+const fmtDayTime = iso => new Date(iso).toLocaleString('de-DE', { timeZone: 'Europe/Berlin', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+const dm = iso => new Date(iso + 'T12:00').toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+
+let D = null;                 // entschlüsselte Daten
+let view = 'day';
+let anchor = new Date();
+let sel = null;
+
+/* ---------- Entschlüsseln ---------- */
+const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+async function decrypt(file, code) {
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(code), 'PBKDF2', false, ['deriveKey']);
+  const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: b64(file.salt), iterations: file.iter, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+  const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(file.iv) }, key, b64(file.ct));
+  return JSON.parse(new TextDecoder().decode(plain));
+}
+const getCode = () => { try { return localStorage.getItem(KEY); } catch (_) { return null; } };
+const setCode = c => { try { c ? localStorage.setItem(KEY, c) : localStorage.removeItem(KEY); } catch (_) {} };
+
+async function load(askIfNeeded) {
+  let file;
+  try {
+    const r = await fetch('data.enc.json?t=' + Date.now(), { cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    file = await r.json();
+  } catch (e) {
+    if (!D) { $('#stateText').textContent = 'Keine Verbindung'; }
+    return false;
+  }
+  const code = getCode();
+  if (code) {
+    try { D = await decrypt(file, code); render(); return true; }
+    catch (_) { setCode(null); }
+  }
+  if (askIfNeeded) openCode(file);
+  return false;
+}
+
+function openCode(file) {
+  const dlg = $('#codeDlg');
+  $('#codeErr').textContent = '';
+  $('#codeForm').onsubmit = async ev => {
+    ev.preventDefault();
+    const code = $('#codeInput').value.trim().toUpperCase();
+    try { D = await decrypt(file, code); setCode(code); dlg.close(); render(); }
+    catch (_) { $('#codeErr').textContent = 'Der Code stimmt nicht. Bitte noch einmal prüfen.'; }
+  };
+  if (!dlg.open) dlg.showModal();
+}
+
+/* ---------- Auswertung ---------- */
+function rateAt(date) {
+  const rs = D.rates || [];
+  if (!rs.length) return null;
+  let ct = rs[0].ct;
+  for (const r of rs) if (r.from <= date) ct = r.ct;
+  return ct;
+}
+function series(v, cursor) {
+  const n = v === 'day' ? 24 : v === 'year' ? 12 : new Date(+cursor.slice(0, 4), +cursor.slice(5, 7), 0).getDate();
+  const buckets = Array.from({ length: n }, () => ({ kwh: 0, eur: 0 }));
+  for (const [k, kwh] of Object.entries(D.hours)) {
+    if (k.slice(0, 10) < D.startDate || !k.startsWith(cursor)) continue;
+    const i = v === 'day' ? +k.slice(11) : v === 'month' ? +k.slice(8, 10) - 1 : +k.slice(5, 7) - 1;
+    const ct = rateAt(k.slice(0, 10));
+    buckets[i].kwh += kwh;
+    buckets[i].eur = ct === null ? null : buckets[i].eur + kwh * ct / 100;
+  }
+  const total = buckets.reduce((a, b) => ({ kwh: a.kwh + b.kwh, eur: a.eur === null || b.eur === null ? null : a.eur + b.eur }), { kwh: 0, eur: 0 });
+  return { buckets, total };
+}
+const cursor = () => view === 'day' ? dkey(anchor) : view === 'month' ? dkey(anchor).slice(0, 7) : String(anchor.getFullYear());
+function isCurrentPeriod() {
+  const t = todayKey();
+  return view === 'day' ? dkey(anchor) === t : view === 'month' ? dkey(anchor).slice(0, 7) === t.slice(0, 7) : String(anchor.getFullYear()) === t.slice(0, 4);
+}
+function title() {
+  if (view === 'day') return isCurrentPeriod() ? 'Heute, ' + anchor.toLocaleDateString('de-DE', { day: 'numeric', month: 'long' }) : anchor.toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' });
+  return view === 'month' ? `${MONTHS[anchor.getMonth()]} ${anchor.getFullYear()}` : String(anchor.getFullYear());
+}
+function bucketLabel(i) {
+  if (view === 'day') return i % 6 === 0 ? pad(i) : '';
+  if (view === 'month') return (i + 1) % 5 === 0 || i === 0 ? String(i + 1) : '';
+  return MON3[i];
+}
+function bucketName(i) {
+  if (view === 'day') return `${pad(i)}–${pad(i + 1)} Uhr`;
+  if (view === 'month') { const d = new Date(anchor.getFullYear(), anchor.getMonth(), i + 1); return `${DOW[d.getDay()]}, ${d.getDate()}.${pad(d.getMonth() + 1)}.`; }
+  return `${MONTHS[i]} ${anchor.getFullYear()}`;
+}
+function nowIndex() {
+  if (!isCurrentPeriod()) return -1;
+  const h = +new Intl.DateTimeFormat('de-DE', { timeZone: 'Europe/Berlin', hour: '2-digit', hourCycle: 'h23' }).format(new Date());
+  const t = todayKey();
+  return view === 'day' ? h : view === 'month' ? +t.slice(8, 10) - 1 : +t.slice(5, 7) - 1;
+}
+
+/* ---------- Anzeige ---------- */
+function render() {
+  if (!D) return;
+  const t = todayKey();
+  const set = (i, s) => { const el = document.querySelectorAll('.tile')[i]; el.querySelector('.k span').textContent = nfKwh(s.kwh); el.querySelector('.e').textContent = eur(s.eur); };
+  set(0, series('day', t).total); set(1, series('month', t.slice(0, 7)).total); set(2, series('year', t.slice(0, 4)).total);
+  $('#yearTileLabel').textContent = D.startDate ? 'Seit ' + dm(D.startDate) : 'Jahr';
+
+  const fresh = Date.now() - Date.parse(D.asOf) < 2 * 3600e3;
+  const live = $('#live');
+  live.classList.toggle('on', fresh);
+  const w = D.last15.kwh * 4000;
+  live.classList.toggle('sell', fresh && w > 0);
+  $('#stateText').textContent = `Zuletzt verkauft, im Schnitt bis ${fmtTime(D.last15.end)} Uhr`;
+  $('#watt').textContent = nf0.format(w);
+  const ct = rateAt(t);
+  $('#chips').innerHTML = `<span>Stand<b class="num">${fmtTime(D.asOf)} Uhr</b></span><span>Vergütung<b class="num">${ct === null ? '–' : nfCt.format(ct) + ' ct'}</b></span><span>Zählung ab<b class="num">${D.startDate ? dm(D.startDate) : '–'}</b></span>`;
+
+  const stale = Date.now() - Date.parse(D.generatedAt) > 3 * 3600e3 || !fresh;
+  const foot = $('#foot');
+  foot.classList.toggle('warn', stale);
+  foot.textContent = `Zählerwerte aus dem Westnetz-Portal, Stand ${fmtDayTime(D.asOf)} Uhr` + (stale ? ' · nicht aktuell, der Abruf läuft gerade nicht' : '');
+  $('#setInfo').textContent = `Daten zuletzt geladen: ${fmtDayTime(D.generatedAt)} Uhr`;
+  drawChart();
+}
+function drawChart() {
+  if (!D) return;
+  const d = series(view, cursor());
+  $('#title').textContent = title();
+  $('#next').disabled = isCurrentPeriod();
+  const max = Math.max(...d.buckets.map(b => b.kwh), 0.001);
+  const cur = nowIndex();
+  const chart = $('#chart');
+  chart.style.gridTemplateColumns = `repeat(${d.buckets.length},1fr)`;
+  chart.innerHTML = d.buckets.map((b, i) =>
+    `<button class="bar${i === cur ? ' now' : ''}${i === sel ? ' sel' : ''}" data-i="${i}" aria-label="${bucketName(i)}: ${nfKwh(b.kwh)} kWh">` +
+    `<span class="col"><span class="fill" style="height:${b.kwh / max * 100}%"></span></span><span class="lbl">${bucketLabel(i)}</span></button>`).join('');
+  const src = sel === null ? { name: 'Gesamt', ...d.total } : { name: bucketName(sel), ...d.buckets[sel] };
+  $('#detail').innerHTML = `${src.name}: <b>${nfKwh(src.kwh)} kWh</b> · <b>${eur(src.eur)}</b>`;
+}
+
+/* ---------- Bedienung ---------- */
+$('#tiles').onclick = ev => {
+  const b = ev.target.closest('.tile'); if (!b) return;
+  view = b.dataset.view; anchor = new Date(); sel = null;
+  document.querySelectorAll('.tile').forEach(x => x.setAttribute('aria-pressed', x === b));
+  drawChart();
+};
+const shift = dir => {
+  const a = new Date(anchor);
+  if (view === 'day') a.setDate(a.getDate() + dir);
+  else if (view === 'month') { a.setDate(1); a.setMonth(a.getMonth() + dir); }
+  else a.setFullYear(a.getFullYear() + dir);
+  const t = todayKey();
+  if (dir > 0 && (view === 'day' ? dkey(a) > t : view === 'month' ? dkey(a).slice(0, 7) > t.slice(0, 7) : String(a.getFullYear()) > t.slice(0, 4))) return;
+  anchor = a; sel = null; drawChart();
+};
+$('#prev').onclick = () => shift(-1);
+$('#next').onclick = () => shift(1);
+$('#chart').onclick = ev => { const b = ev.target.closest('.bar'); if (b) { const i = +b.dataset.i; sel = sel === i ? null : i; drawChart(); } };
+
+const sdlg = $('#setDlg');
+$('#openSettings').onclick = () => sdlg.showModal();
+$('#closeSet').onclick = () => sdlg.close();
+sdlg.addEventListener('click', ev => { if (ev.target === sdlg) sdlg.close(); });
+$('#forgetBtn').onclick = () => { setCode(null); D = null; sdlg.close(); load(true); };
+$('#csvBtn').onclick = async () => {
+  if (!D) return;
+  const days = {};
+  for (const [k, kwh] of Object.entries(D.hours)) if (k.slice(0, 10) >= D.startDate) days[k.slice(0, 10)] = (days[k.slice(0, 10)] || 0) + kwh;
+  const num = v => String(v).replace('.', ',');
+  const lines = ['Datum;Verkauft (kWh);Vergütung (ct/kWh);Betrag (EUR)'];
+  for (const d of Object.keys(days).sort()) { const ct = rateAt(d); lines.push([d, num(days[d].toFixed(3)), ct === null ? '' : num(ct), ct === null ? '' : num((days[d] * ct / 100).toFixed(2))].join(';')); }
+  try { await navigator.clipboard.writeText(lines.join('\r\n')); $('#setInfo').textContent = 'Tabelle kopiert. In Excel einfügen.'; }
+  catch (_) { $('#setInfo').textContent = 'Kopieren wird auf diesem Gerät blockiert.'; }
+};
+
+// Daten alle 5 Minuten neu laden, solange die Seite sichtbar ist.
+let timer = null;
+const start = () => { stop(); load(true); timer = setInterval(() => load(false), 5 * 60e3); };
+const stop = () => { clearInterval(timer); timer = null; };
+document.addEventListener('visibilitychange', () => document.hidden ? stop() : start());
+start();
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+})();
+</script>
+</body>
+</html>

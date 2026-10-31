@@ -1,0 +1,58 @@
+name: Einspeisung aktualisieren
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'   # GitHub verzögert geplante Läufe oft um einige Minuten
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: einspeisung
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Werte aus dem Westnetz-Portal holen und verschlüsseln
+        env:
+          MEDACO_USER: ${{ secrets.MEDACO_USER }}
+          MEDACO_PASSWORD: ${{ secrets.MEDACO_PASSWORD }}
+          DATA_KEY: ${{ secrets.DATA_KEY }}
+        run: node scripts/update.js
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - id: deploy
+        uses: actions/deploy-pages@v4
+
+      # GitHub schaltet geplante Läufe in öffentlichen Repositories nach 60 Tagen ohne Aktivität ab.
+      - name: Repository aktiv halten
+        run: |
+          last=$(git log -1 --format=%ct)
+          now=$(date +%s)
+          if [ $((now - last)) -gt $((40 * 86400)) ]; then
+            date -u +%F > .keepalive
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add .keepalive
+            git commit -m "Keepalive"
+            git push
+          fi

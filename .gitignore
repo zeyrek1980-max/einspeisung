@@ -1,0 +1,5 @@
+site/data.enc.json
+config.local.json
+node_modules/
+*.log
+zugangscode.txt
