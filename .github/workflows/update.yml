@@ -2,7 +2,8 @@ name: Einspeisung aktualisieren
 
 on:
   schedule:
-    - cron: '*/15 * * * *'   # GitHub verzögert geplante Läufe oft um einige Minuten
+    # Nicht auf :00/:15/:30/:45 legen: zu den vollen Viertelstunden ist GitHub überlastet und lässt Läufe ausfallen.
+    - cron: '4,19,34,49 * * * *'
   workflow_dispatch:
 
 permissions:
