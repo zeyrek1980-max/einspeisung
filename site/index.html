@@ -408,11 +408,15 @@ function render() {
   renderHero();
 
   const fresh = Date.now() - Date.parse(D.asOf) < 2 * 3600e3;
+  // checkedAt: letzter Lauf, auch wenn das Portal nicht antwortete. Läuft die Kette, wartet nur das Portal.
+  const checkedAt = D.checkedAt || D.generatedAt;
+  const running = Date.now() - Date.parse(checkedAt) < 45 * 60e3;
   const stale = Date.now() - Date.parse(D.generatedAt) > 3 * 3600e3 || !fresh;
   const foot = $('#foot');
   foot.classList.toggle('warn', stale);
-  foot.textContent = `Zählerwerte aus dem Westnetz-Portal, Stand ${fmtDayTime(D.asOf)} Uhr` + (stale ? ' · nicht aktuell, der Abruf läuft gerade nicht' : '');
-  $('#setInfo').textContent = `Daten zuletzt geladen: ${fmtDayTime(D.generatedAt)} Uhr`;
+  foot.textContent = `Zählerwerte aus dem Westnetz-Portal, Stand ${fmtDayTime(D.asOf)} Uhr` +
+    (!stale ? '' : running ? ' · Das Portal liefert gerade keine neuen Werte, sie werden automatisch nachgeladen' : ' · nicht aktuell, der Abruf läuft gerade nicht');
+  $('#setInfo').textContent = `Daten zuletzt geladen: ${fmtDayTime(D.generatedAt)} Uhr` + (checkedAt !== D.generatedAt ? ` · zuletzt geprüft: ${fmtDayTime(checkedAt)} Uhr` : '');
   renderBilanz();
   renderAbschlag();
   drawChart();

@@ -41,7 +41,7 @@ const hourKey = ms => { const p = Object.fromEntries(berlinFmt.formatToParts(new
     console.error('Portal-Abruf nicht möglich, letzter Stand bleibt:', e.message);
     console.log(`::warning::Portal-Abruf nicht möglich (${e.message}), die Seite zeigt den Stand vom ${prev.asOf}`);
     fs.mkdirSync(path.dirname(OUT), { recursive: true });
-    fs.writeFileSync(OUT, JSON.stringify(seal({ ...prev, sonnen, portalRejectedAt: rejected ? new Date().toISOString() : prev.portalRejectedAt }, DATA_KEY)));
+    fs.writeFileSync(OUT, JSON.stringify(seal({ ...prev, sonnen, checkedAt: new Date().toISOString(), portalRejectedAt: rejected ? new Date().toISOString() : prev.portalRejectedAt }, DATA_KEY)));
   }
 })().catch(e => { console.error('Abruf fehlgeschlagen:', e.message); process.exit(1); });
 

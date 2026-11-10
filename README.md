@@ -82,5 +82,10 @@ Die Seite soll ohne Zutun aktuell bleiben, auch wenn monatelang niemand nachsieh
 ## Grenzen
 
 - Das Portal liefert die Werte mit etwa 15 bis 30 Minuten Verzögerung. Live-Leistung kommt separat von sonnen.
+- Das MeDaCo-Portal antwortet nicht rund um die Uhr. Am 10.11.2026 war es ab etwa 17 Uhr deutscher Zeit auch vom
+  eigenen PC aus nicht erreichbar (Anfrage läuft ins Leere), in den Nächten davor ebenfalls bis zum Morgen. Die Seite
+  zeigt dann den letzten Stand mit dem Hinweis, dass das Portal gerade keine neuen Werte liefert. Die Viertelstundenwerte
+  der Zwischenzeit kommen automatisch nach, sobald das Portal wieder antwortet. Die Zahlen der sonnenBatterie taugen
+  nicht als Ersatz: Sie weichen von den Zählerwerten stark ab (Einkauf nachts um das Fünffache).
 - Reißt die Kette ab und der Zeitplan fällt ebenfalls aus (z. B. bei einer GitHub-Störung), steht die Seite, bis jemand
   `gh workflow run update.yml` ausführt oder in GitHub unter *Actions* den Lauf von Hand startet.
