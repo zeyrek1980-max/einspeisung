@@ -37,8 +37,15 @@ async function getJson(jar, p) {
 async function login(user, password) {
   const jar = new Jar();
   const page = await request(jar, '/login');
-  const m = (await page.text()).match(/name="_csrf_token"\s+value="([^"]+)"/);
-  if (!m) throw new Error('Die Portal-Anmeldeseite hat sich geändert (kein CSRF-Token gefunden)');
+  const html = await page.text();
+  const m = html.match(/name="_csrf_token"\s+value="([^"]+)"/);
+  if (!m) {
+    // Statuscode und Anfang der Seite mitgeben: So ist erkennbar, ob eine Sperrseite (Cloudflare) oder Wartung antwortet.
+    const title = (html.match(/<title[^>]*>([^<]*)/i) || [])[1] || '';
+    const body = html.replace(/<(script|style)[\s\S]*?<\/\1>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160);
+    const h = n => page.headers.get(n);
+    throw new Error(`Die Portal-Anmeldeseite hat sich geändert (kein CSRF-Token gefunden): HTTP ${page.status}, server=${h('server') || '-'}, cf-mitigated=${h('cf-mitigated') || '-'}, Titel „${title.trim()}“, Text „${body}“`);
+  }
   let res = await request(jar, '/login_check', {
     method: 'POST',
     body: new URLSearchParams({ _username: user, _password: password, _csrf_token: m[1] }),
