@@ -56,8 +56,21 @@ async function previous() {
   } catch (_) { return null; }
 }
 
+// Das Portal antwortet manchmal nicht oder liefert eine Fehlerseite. Ein neuer Versuch nach kurzer Pause hilft oft.
+// Abgelehnte Anmeldungen nie wiederholen (Kontosperre).
+async function withRetry(fn, tries = 3, pauseMs = Number(process.env.RETRY_PAUSE_MS || 60000)) {
+  for (let i = 1; ; i++) {
+    try { return await fn(); }
+    catch (e) {
+      if (i >= tries || /^Anmeldung abgelehnt/.test(e.message)) throw e;
+      console.error(`Portal-Versuch ${i} von ${tries} fehlgeschlagen (${e.message}), neuer Versuch in ${Math.round(pauseMs / 1000)} s`);
+      await new Promise(r => setTimeout(r, pauseMs));
+    }
+  }
+}
+
 async function publishFresh(sonnen) {
-  const d = await fetchIntervals({ user: MEDACO_USER, password: MEDACO_PASSWORD, from: tarif.startDate, obis: ['2.29.0', '1.29.0'] });
+  const d = await withRetry(() => fetchIntervals({ user: MEDACO_USER, password: MEDACO_PASSWORD, from: tarif.startDate, obis: ['2.29.0', '1.29.0'] }));
   // Viertelstundenwerte zu Stundensummen verdichten. Der Zeitstempel gilt für das Ende des Intervalls.
   const aggregate = line => {
     const hours = {};
